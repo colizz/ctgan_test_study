@@ -10,16 +10,16 @@ LOGGER = logging.getLogger(__name__)
 
 DEFAULT_DATASETS = [
     "adult",
-    "alarm",
-    "asia",
+##     "alarm",
+##    "asia",
     "census",
-    "child",
+##    "child",
     "covtype",
     "credit",
     "grid",
     "gridr",
-    "insurance",
-    "intrusion",
+##    "insurance",
+##    "intrusion",
     "mnist12",
     "mnist28",
     "news",
@@ -28,16 +28,21 @@ DEFAULT_DATASETS = [
 
 
 def benchmark(synthesizer, datasets=DEFAULT_DATASETS, repeat=3):
+    print (datasets)
     results = list()
     for name in datasets:
-        LOGGER.info('Evaluating dataset %s', name)
-        train, test, meta, categoricals, ordinals = load_dataset(name, benchmark=True)
+        try:
+            print('Evaluating dataset %s', name)
+            train, test, meta, categoricals, ordinals = load_dataset(name, benchmark=True)
 
-        for iteration in range(repeat):
-            synthesized = synthesizer(train, categoricals, ordinals)
-            scores = evaluate(train, test, synthesized, meta)
-            scores['dataset'] = name
-            scores['iter'] = iteration
-            results.append(scores)
+            for iteration in range(repeat):
+                synthesized = synthesizer(train, categoricals, ordinals)
+                scores = evaluate(train, test, synthesized, meta)
+                scores['dataset'] = name
+                scores['iter'] = iteration
+                results.append(scores)
+        except KeyError:
+            print ("Here is the KeyError")
+            continue
 
     return pd.concat(results)
