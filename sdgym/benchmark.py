@@ -5,12 +5,14 @@ import pandas as pd
 from sdgym.data import load_dataset
 from sdgym.evaluate import evaluate
 
+import pickle
+
 LOGGER = logging.getLogger(__name__)
 
 
 DEFAULT_DATASETS = [
     "adult",
-##     "alarm",
+##    "alarm",
 ##    "asia",
     "census",
 ##    "child",
@@ -27,7 +29,7 @@ DEFAULT_DATASETS = [
 ]
 
 
-def benchmark(synthesizer, datasets=DEFAULT_DATASETS, repeat=3):
+def benchmark(synthesizer, datasets=DEFAULT_DATASETS, repeat=3, prefix='tmp'):
     print (datasets)
     results = list()
     for name in datasets:
@@ -41,6 +43,9 @@ def benchmark(synthesizer, datasets=DEFAULT_DATASETS, repeat=3):
                 scores['dataset'] = name
                 scores['iter'] = iteration
                 results.append(scores)
+            print (results)
+            with open(f'{prefix}_{name}.pickle', 'wb') as f:
+                pickle.dump(results, f)
         except KeyError:
             print ("Here is the KeyError")
             continue
