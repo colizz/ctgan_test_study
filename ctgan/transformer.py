@@ -40,8 +40,8 @@ class DataTransformer(object):
             'name': column,
             'model': gm,
             'components': components,
-            'output_info': [(dim, 'tanh'), (num_components, 'softmax')], # dim = 1 or 2
-            'output_dimensions': dim + num_components,
+            'output_info': [(1 if dim==1 else 3, 'tanh'), (num_components, 'softmax')], # dim = 1 or 2
+            'output_dimensions': (1 if dim==1 else 3) + num_components,
         }
 
     def _fit_discrete(self, column, data):
@@ -85,6 +85,7 @@ class DataTransformer(object):
                any([(key[0]==col or key[1]==col) for colpair in dic_comb for col in colpair])==False:
                 dic_comb.append(key)
         print ("Combined twin-column(s): ", dic_comb) # see final twin-column list
+        self.combined_twin_columns = dic_comb
         # start 2D Bayesian Gaussian Mixture fit
         for col1, col2 in dic_comb:
             column_data = data[[col1, col2]].values # shape(len-data, 2)
@@ -95,12 +96,16 @@ class DataTransformer(object):
             print(meta['name'], meta['output_info'])
         
         # continue with to normal schedule
-        for column in data.columns:
+        self.column_names = {}
+        for i, column in enumerate(data.columns):
+            self.column_names[i] = column
             column_data = data[[column]].values
             if column in discrete_columns:
                 meta = self._fit_discrete(column, column_data)
-            else:
+            elif any([column==col for colpair in dic_comb for col in colpair])==False: # do not load twin-column as seperate ones!
                 meta = self._fit_continuous(column, column_data)
+            else:
+                continue  # then do not load information below
 
             self.output_info += meta['output_info']
             self.output_dimensions += meta['output_dimensions']
@@ -133,6 +138,12 @@ class DataTransformer(object):
             features = features[idx, opt_sel].reshape([-1, 1])
             features = np.clip(features, -.99, .99)
             features_.append(features)
+        # add covariance for 2D fit
+        if dim==2:
+            covs = (model.covariances_[:, 0, 1]/np.sqrt(model.covariances_[:, 0, 0]*model.covariances_[:, 1, 1])).reshape((1, self.n_clusters))
+            covs = (covs - np.zeros((len(data), self.n_clusters)))[:, components]
+            covs = covs[idx, opt_sel].reshape([-1, 1])
+            features_.append(covs)
         features_ = np.concatenate(features_, axis=1)
         
         probs_onehot = np.zeros_like(probs)
@@ -163,28 +174,28 @@ class DataTransformer(object):
 
         return np.concatenate(values, axis=1).astype(float)
 
-    def _inverse_transform_continuous(self, meta, data, sigma):
+    def _inverse_transform_continuous(self, meta, data, sigma, dim=1):
         model = meta['model']
         components = meta['components']
 
-        u = data[:, 0]
-        v = data[:, 1:]
-
-        if sigma is not None:
-            u = np.random.normal(u, sigma)
-
-        u = np.clip(u, -1, 1)
+        v = data[:, 1:] if dim==1 else data[:, 3:]
         v_t = np.ones((len(data), self.n_clusters)) * -100
         v_t[:, components] = v
         v = v_t
-        means = model.means_.reshape([-1])
-        stds = np.sqrt(model.covariances_).reshape([-1])
         p_argmax = np.argmax(v, axis=1)
-        std_t = stds[p_argmax]
-        mean_t = means[p_argmax]
-        column = u * 4 * std_t + mean_t
+        columns = []
+        for idim in range(dim):
+            u = data[:, idim]
+            if sigma is not None:
+                u = np.random.normal(u, sigma)
 
-        return column
+            means = model.means_[:, idim].reshape([-1])
+            stds = np.sqrt(model.covariances_[:, idim, idim]).reshape([-1])
+            std_t = stds[p_argmax]
+            mean_t = means[p_argmax]
+            columns.append(u * 4 * std_t + mean_t)
+
+        return columns[0] if dim==1 else columns
 
     def _inverse_transform_discrete(self, meta, data):
         encoder = meta['encoder']
@@ -192,27 +203,26 @@ class DataTransformer(object):
 
     def inverse_transform(self, data, sigmas):
         start = 0
-        output = []
-        column_names = []
+        output = {}
         for meta in self.meta:
             dimensions = meta['output_dimensions']
-            if isinstance(meta['name'], tuple):
-                start += dimensions
-                continue
             columns_data = data[:, start:start + dimensions]
-
-            if 'model' in meta:
+            if isinstance(meta['name'], tuple):
+                sigma = sigmas[start] if sigmas else None
+                inverted2d = self._inverse_transform_continuous(meta, columns_data, sigma, dim=2)
+                output[meta['name'][0]] = inverted2d[0]
+                output[meta['name'][1]] = inverted2d[1]
+            elif 'model' in meta:
                 sigma = sigmas[start] if sigmas else None
                 inverted = self._inverse_transform_continuous(meta, columns_data, sigma)
+                output[meta['name']] = inverted
             else:
                 inverted = self._inverse_transform_discrete(meta, columns_data)
-
-            output.append(inverted)
-            column_names.append(meta['name'])
+                output[meta['name']] = inverted
             start += dimensions
 
-        output = np.column_stack(output)
+        output = np.column_stack([output[self.column_names[i]] for i in range(len(self.column_names))])
         if self.dataframe:
-            output = pd.DataFrame(output, columns=column_names)
+            output = pd.DataFrame(output, columns=[self.column_names[i] for i in range(len(self.column_names))])
 
         return output
