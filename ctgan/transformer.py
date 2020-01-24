@@ -89,9 +89,10 @@ class DataTransformer(object):
         for col1, col2 in dic_comb:
             column_data = data[[col1, col2]].values # shape(len-data, 2)
             meta = self._fit_continuous((col1, col2), column_data, dim=2)
-        self.output_info += meta['output_info']
-        self.output_dimensions += meta['output_dimensions']
-        self.meta.append(meta)
+            self.output_info += meta['output_info']
+            self.output_dimensions += meta['output_dimensions']
+            self.meta.append(meta)
+            print(meta['name'], meta['output_info'])
         
         # continue with to normal schedule
         for column in data.columns:
@@ -104,6 +105,7 @@ class DataTransformer(object):
             self.output_info += meta['output_info']
             self.output_dimensions += meta['output_dimensions']
             self.meta.append(meta)
+            print(meta['name'], meta['output_info'])
 
     def _transform_continuous(self, column_meta, data, dim=1):
         # these are unchanged info for dim=1 or 2
@@ -135,7 +137,7 @@ class DataTransformer(object):
         
         probs_onehot = np.zeros_like(probs)
         probs_onehot[np.arange(len(probs)), opt_sel] = 1
-        print (column_meta['name'], dim, [features_, probs_onehot])
+        # print (column_meta['name'], dim, [features_, probs_onehot])
         return [features_, probs_onehot]
 
     def _transform_discrete(self, column_meta, data):
